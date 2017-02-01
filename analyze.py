@@ -14,16 +14,6 @@ for i in range(l):
 
 print "Got data"
 
-# Only look at the actual basic file
-'''
-i = 340000
-j = 80000
-data = data[i:i+j]
-'''
-
-# Normalize level
-data = [e + 1700 for e in data]
-
 
 # Remove ringing
 # Ringing has five periods on 38 samples
@@ -56,56 +46,51 @@ for i in range(n):
 
 
 # filt now holds the signal without ringings
-#plt.plot(data,'r:')
-#plt.plot(filt,'b-')
-#plt.show()
 
-print "Starting computations..."
-# System naturally halves in 40 samples
-# u(t) = A * 0.5 ^ (t/40) = A * exp(t * log(0.5)/40)
-# u'(t) =  log(0.5)/40 * u(t)
-slope = [0, 0] + [(b - a)/5 for a,b in zip(filt, filt[4:])]
-k = math.log(0.5)/40
-speed = [d - u*k for d,u in zip(slope, filt)]
-force = [0, 0] + [(b - a) for a,b in zip(speed, speed[4:])]
-span = [max(force[i:i+10]) - min(force[i:i+10]) for i in range(len(force))]
+c = 0
+pulses = []
+# Simulation of RC filter
+for inVolt in data:
+	out = inVolt + c
+	c -= out*0.1
+	pulses += [abs(out)]
 
-print "Computations done."
-
-#plt.plot(slope,'r--')
-#plt.plot(force,'r:')
-#plt.show()
+pulses = [max(pulses[i:i+20]) for i in range(len(pulses))]
+pulses = [min(pulses[i:i+15]) for i in range(len(pulses))]
 
 
-# span now holds the signal to extract bits from
+# pulses now holds the signal to extract bits from
 # it is a pulse train
 # '000' is encoded as '__^___^___^____'  ~120 samples between peaks
 # '111' is encoded as '__^_^_^_^_^_^___' ~60 samples between peaks
 # '010' is encoded as '__^___^_^_^_____'
 
 #Hysteresis constants
-thresh = 300
-trig = 150
+thresh = 1200
 isHigh = False
 # The loop below uses isHigh as a state variable
 # to detect peaks with hysterisis
 
 maxPeakIndex = 0
-maxPeakValue = 0
+peakValue = 0
 lastPeakIndex = 0 # holds the sample index of midpoint of last peak
 
 isHalfPeriod = False
 bits = []
 pos = []
 
-for i,s in enumerate(span):
+# For debug plotting peak detection
+peakPlot = []
+peakPos = []
+
+for i,s in enumerate(pulses):
 	if isHigh:
 		# We are on a peak.
-		if s > maxPeakValue:
+		if s > peakValue:
 			# New highest value of peak found:
-			maxPeakValue = s
+			peakValue = s
 			maxPeakIndex = i
-		if s < trig:
+		if s < peakValue - thresh:
 			# End of peak detected, compute bit value to store
 			pulseLen = maxPeakIndex- lastPeakIndex
 
@@ -142,22 +127,33 @@ for i,s in enumerate(span):
 
 			# Leave peak state
 			isHigh = False
+			peakPlot += [1, 0]
+			peakPos += [i, i]
 	else:
 		# not isHigh, we are between two peaks
-		if s > thresh:
+		if s < peakValue:
+			# New low value found:
+			peakValue = s
+		if s > thresh + peakValue:
 			# Peak detected, enter peak state
 			maxPeakIndex = i
 			maxPeakValue = s
 			isHigh = True
+			peakPlot += [0, 1]
+			peakPos += [i, i]
 
 # bits now holds the raw bitstream from the audio tape
 # pos holds the sample index of the bits
 
-'''
-plt.plot(span,'b-')
-plt.plot(pos,[e * max(span) for e in bits],'k+')
+
+print "Preparing plot..."
+m = max(pulses)/3
+peakPlot = [m+v*m for v in peakPlot]
+bitPlot = [m+v*m for v in bits]
+plt.plot(pulses,'g:')
+plt.plot(peakPos,peakPlot,'b-')
+plt.plot(pos,bitPlot,'k-*')
 plt.show()
-'''
 
 # bit stream starts with a lot of zeroes, find first 1-bit to synchronize
 bits = bits[(bits.index(1)-1)%8:]
@@ -168,6 +164,6 @@ for i in range(len(bits)/8):
 	l = bits[i*8:i*8+8][::-1]
 	c = eval('0b' + ''.join(map(str,l)))
 	text += chr(c)
-	print l, hex(c), repr(chr(c))
+	#print l, hex(c), repr(chr(c))
 print repr(text)
 
