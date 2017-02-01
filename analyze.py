@@ -15,9 +15,11 @@ for i in range(l):
 print "Got data"
 
 # Only look at the actual basic file
+'''
 i = 340000
 j = 80000
 data = data[i:i+j]
+'''
 
 # Normalize level
 data = [e + 1700 for e in data]
@@ -75,44 +77,60 @@ print "Computations done."
 #plt.show()
 
 
-#Hysteresis constants,
-thresh = 300
-trig = 100
+# span now holds the signal to extract bits from
+# it is a pulse train
+# '000' is encoded as '__^___^___^____'  ~120 samples between peaks
+# '111' is encoded as '__^_^_^_^_^_^___' ~60 samples between peaks
+# '010' is encoded as '__^___^_^_^_____'
 
+#Hysteresis constants
+thresh = 300
+trig = 150
 isHigh = False
-gotHigh = 0
-lastMidpoint = 0
+# The loop below uses isHigh as a state variable
+# to detect peaks with hysterisis
+
+maxPeakIndex = 0
+maxPeakValue = 0
+lastMidpoint = 0 # holds the sample index of midpoint of last peak
 
 isHalfPeriod = False
 bits = []
 pos = []
+
 for i,s in enumerate(span):
 	if isHigh:
+		if s > maxPeakValue:
+			maxPeakValue = s
+			maxPeakIndex = i
 		if s < trig:
 			isHigh = False
-			midpoint = (gotHigh + i)/2
+			midpoint = maxPeakIndex
 			pulseLen = midpoint - lastMidpoint
 			if pulseLen > 200:
 				# start of tape
 				pass
-			elif pulseLen < 80:
+			elif pulseLen < 90:
 				# short pulse
 				if isHalfPeriod:
 					isHalfPeriod = False
 					bits += [1]
 					pos += [i]
-					pass
 				else:
 					isHalfPeriod = True
 			else:
-				assert not isHalfPeriod, repr(i)
+				if isHalfPeriod:
+					print "Warning: out of sync at index:", i
+					isHalfPeriod = False
 				#long pulse, add bit
 				bits += [0]
 				pos += [i]
 
 			lastMidpoint = midpoint
-			gotLow = i
 	else:
+		# not isHigh
+		maxPeakIndex = 0
+		maxPeakValue = 0
 		if s > thresh:
 			isHigh = True
 			gotHigh = i
