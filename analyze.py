@@ -92,7 +92,7 @@ isHigh = False
 
 maxPeakIndex = 0
 maxPeakValue = 0
-lastMidpoint = 0 # holds the sample index of midpoint of last peak
+lastPeakIndex = 0 # holds the sample index of midpoint of last peak
 
 isHalfPeriod = False
 bits = []
@@ -100,48 +100,64 @@ pos = []
 
 for i,s in enumerate(span):
 	if isHigh:
+		# We are on a peak.
 		if s > maxPeakValue:
+			# New highest value of peak found:
 			maxPeakValue = s
 			maxPeakIndex = i
 		if s < trig:
-			isHigh = False
-			midpoint = maxPeakIndex
-			pulseLen = midpoint - lastMidpoint
+			# End of peak detected, compute bit value to store
+			pulseLen = maxPeakIndex- lastPeakIndex
+
 			if pulseLen > 200:
-				# start of tape
+				# Very long pulse, start of tape. Ignore.
 				pass
 			elif pulseLen < 90:
-				# short pulse
+				# short pulse, only store bit on every other peak
 				if isHalfPeriod:
+					# Second short pulse, store bit
 					isHalfPeriod = False
 					bits += [1]
-					pos += [i]
+
+					pos += [i] # Bit index for debugging
 				else:
+					# This was the first pulse, wait for the
+					# next one to store bit
 					isHalfPeriod = True
 			else:
+				# 90 <= pulselen <= 200
+				# This is a long period
+
 				if isHalfPeriod:
+					# Safety check, only a half short period
+					# was received previously
 					print "Warning: out of sync at index:", i
 					isHalfPeriod = False
-				#long pulse, add bit
+				# long pulse, add bit
 				bits += [0]
-				pos += [i]
+				pos += [i] # Bit index for debugging
 
-			lastMidpoint = midpoint
+			# Save this peak position for next time
+			lastPeakIndex = maxPeakIndex
+
+			# Leave peak state
+			isHigh = False
 	else:
-		# not isHigh
-		maxPeakIndex = 0
-		maxPeakValue = 0
+		# not isHigh, we are between two peaks
 		if s > thresh:
+			# Peak detected, enter peak state
+			maxPeakIndex = i
+			maxPeakValue = s
 			isHigh = True
-			gotHigh = i
+
+# bits now holds the raw bitstream from the audio tape
+# pos holds the sample index of the bits
 
 '''
 plt.plot(span,'b-')
 plt.plot(pos,[e * max(span) for e in bits],'k+')
 plt.show()
 '''
-
-# bits now holds the raw bitstream from the audio tape
 
 # bit stream starts with a lot of zeroes, find first 1-bit to synchronize
 bits = bits[(bits.index(1)-1)%8:]
